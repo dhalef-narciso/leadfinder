@@ -12,10 +12,38 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// Middleware
+// CORS Configuration
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173'
+];
+
+if (process.env.FRONTEND_URL) {
+  allowedOrigins.push(process.env.FRONTEND_URL.replace(/\/$/, ''));
+}
+
 app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS']
+  origin: (origin, callback) => {
+    // Allow non-browser calls (like health checks, curl)
+    if (!origin) return callback(null, true);
+
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.vercel.app') ||
+      process.env.NODE_ENV !== 'production' ||
+      !process.env.FRONTEND_URL ||
+      process.env.CORS_ORIGIN === '*'
+    ) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
 
@@ -36,8 +64,9 @@ app.get('/api/health', (_req, res) => {
 });
 
 if (!process.env.VERCEL) {
-  app.listen(PORT, () => {
-    console.log(`LeadFinder Backend running on port ${PORT}`);
+  const portNum = Number(PORT) || 5001;
+  app.listen(portNum, '0.0.0.0', () => {
+    console.log(`LeadFinder Backend running on port ${portNum} (host: 0.0.0.0)`);
     console.log(`Active Search Provider: ${process.env.SEARCH_PROVIDER || 'mock'}`);
   });
 }

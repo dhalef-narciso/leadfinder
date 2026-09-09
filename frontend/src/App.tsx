@@ -51,7 +51,7 @@ export const App: React.FC = () => {
       setSavedSearches(searchesData);
     } catch (err: any) {
       console.error('Error loading data:', err);
-      setApiError('Não foi possível conectar ao servidor backend (porta 5001). Certifique-se de que o backend está rodando.');
+      setApiError('Não foi possível conectar ao servidor backend. Certifique-se de que o backend está rodando e acessível na URL configurada.');
     } finally {
       setLoading(false);
     }
