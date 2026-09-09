@@ -11,6 +11,7 @@
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:seed": "ts-node src/db/seed.ts",
+    "db:deploy": "prisma db push && ts-node src/db/seed.ts",
     "test": "ts-node src/tests/validation-pipeline.test.ts && ts-node src/tests/generators.test.ts"
   },
   "dependencies": {
