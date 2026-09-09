@@ -35,7 +35,11 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`LeadFinder Backend running on port ${PORT}`);
-  console.log(`Active Search Provider: ${process.env.SEARCH_PROVIDER || 'mock'}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`LeadFinder Backend running on port ${PORT}`);
+    console.log(`Active Search Provider: ${process.env.SEARCH_PROVIDER || 'mock'}`);
+  });
+}
+
+export default app;

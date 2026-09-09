@@ -5,7 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const prisma_1 = __importDefault(require("../db/prisma"));
-const OutreachGeneratorService_1 = require("../services/OutreachGeneratorService");
+const WebsitePromptGenerator_1 = require("../services/WebsitePromptGenerator");
+const OutreachMessageGenerator_1 = require("../services/OutreachMessageGenerator");
 const router = (0, express_1.Router)();
 // GET /api/leads - Filterable, sortable list
 router.get('/', async (req, res) => {
@@ -109,7 +110,8 @@ router.get('/:id', async (req, res) => {
             where: { id },
             include: {
                 statusHistory: { orderBy: { changedAt: 'desc' } },
-                outreachMessages: { orderBy: { createdAt: 'desc' } }
+                outreachMessages: { orderBy: { createdAt: 'desc' } },
+                websiteDemoPrompts: { orderBy: { createdAt: 'desc' } }
             }
         });
         if (!lead) {
@@ -183,39 +185,115 @@ router.delete('/:id', async (req, res) => {
         return res.status(500).json({ error: error.message });
     }
 });
-// POST /api/leads/:id/outreach - Generate and optionally save outreach message
-router.post('/:id/outreach', async (req, res) => {
+// POST /api/leads/:id/demo-prompt - Generate and save Lovable prompt
+router.post('/:id/demo-prompt', async (req, res) => {
     try {
         const { id } = req.params;
-        const { style = 'Friendly', contactName, save = true } = req.body;
         const lead = await prisma_1.default.lead.findUnique({ where: { id } });
         if (!lead) {
             return res.status(404).json({ error: 'Lead not found.' });
         }
-        const messageText = OutreachGeneratorService_1.OutreachGeneratorService.generate({
+        const prompt = WebsitePromptGenerator_1.WebsitePromptGenerator.generate(lead);
+        const [savedPrompt] = await prisma_1.default.$transaction([
+            prisma_1.default.websiteDemoPrompt.create({
+                data: {
+                    leadId: id,
+                    prompt
+                }
+            }),
+            prisma_1.default.lead.update({
+                where: { id },
+                data: { demoGenerated: true }
+            })
+        ]);
+        return res.json({
+            id: savedPrompt.id,
+            prompt: savedPrompt.prompt,
+            createdAt: savedPrompt.createdAt,
+            demoGenerated: true
+        });
+    }
+    catch (error) {
+        return res.status(500).json({ error: error.message });
+    }
+});
+// GET /api/leads/:id/demo-prompts - Retrieve demo prompt history
+router.get('/:id/demo-prompts', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const prompts = await prisma_1.default.websiteDemoPrompt.findMany({
+            where: { leadId: id },
+            orderBy: { createdAt: 'desc' }
+        });
+        return res.json(prompts);
+    }
+    catch (error) {
+        return res.status(500).json({ error: error.message });
+    }
+});
+// POST /api/leads/:id/outreach - Generate and optionally save outreach message
+router.post('/:id/outreach', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tone = 'Friendly', style, language = 'en', hasDemo, contactName, save = true } = req.body;
+        const lead = await prisma_1.default.lead.findUnique({ where: { id } });
+        if (!lead) {
+            return res.status(404).json({ error: 'Lead not found.' });
+        }
+        const selectedTone = (tone || style || 'Friendly');
+        // If hasDemo is explicitly passed use it; otherwise check if lead.demoGenerated is true
+        const demoAware = hasDemo !== undefined ? Boolean(hasDemo) : Boolean(lead.demoGenerated);
+        const messageText = OutreachMessageGenerator_1.OutreachMessageGenerator.generate({
             businessName: lead.businessName,
             niche: lead.niche,
             location: lead.location,
             contactName: contactName || undefined,
+            hasWebsite: lead.websiteStatus === 'Website Found',
+            websiteUrl: lead.websiteUrl,
             instagram: lead.instagram,
+            facebook: lead.facebook,
             phone: lead.phone,
-            hasWebsite: lead.websiteStatus === 'Website Found'
-        }, style);
+            rating: lead.rating,
+            reviewsCount: lead.reviewsCount,
+            hasDemo: demoAware,
+            tone: selectedTone,
+            language: language === 'pt' ? 'pt' : 'en'
+        });
         let savedMessage = null;
         if (save) {
             savedMessage = await prisma_1.default.outreachMessage.create({
                 data: {
                     leadId: id,
-                    style: String(style),
-                    messageText
+                    style: selectedTone,
+                    language: String(language || 'en'),
+                    messageText,
+                    demoGeneratedAtGeneration: demoAware
                 }
             });
         }
         return res.json({
-            style,
+            id: savedMessage?.id,
+            style: selectedTone,
+            tone: selectedTone,
+            language: language || 'en',
             messageText,
-            savedMessage
+            demoGeneratedAtGeneration: demoAware,
+            createdAt: savedMessage?.createdAt || new Date()
         });
+    }
+    catch (error) {
+        return res.status(500).json({ error: error.message });
+    }
+});
+// GET /api/leads/:id/outreach - Retrieve outreach history
+router.get('/:id/outreach', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const messages = await prisma_1.default.outreachMessage.findMany({
+            where: { leadId: id },
+            orderBy: { createdAt: 'desc' }
+        });
+        return res.json(messages);
     }
     catch (error) {
         return res.status(500).json({ error: error.message });
